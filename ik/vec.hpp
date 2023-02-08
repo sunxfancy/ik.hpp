@@ -64,7 +64,7 @@ public:
 
     vec<T, N> operator=(vec<T, N> rhs) {
         for (unsigned i = 0; i < N; ++i) {
-            data[i] = 0;
+            data[i] = rhs[i];
         }
         return *this;
     }
@@ -84,7 +84,7 @@ template <typename T, unsigned N>
 T dot(vec<T, N> lhs, vec<T, N> rhs) {
     T result;
     for(unsigned i = 0; i < N; ++i) {
-        result += lhs[i] * rhs[i];
+        result += (lhs[i] * rhs[i]);
     }
     return result;
 }

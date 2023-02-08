@@ -1,5 +1,5 @@
 #pragma once
-
+#include <iostream>
 #include "ik/vec.hpp"
 
 namespace ik
@@ -23,12 +23,20 @@ public:
 
     vec<T, C>& operator[](unsigned i) { return data[i]; }
     const vec<T, C>& operator[](unsigned i) const { return data[i]; }
-
-    mat<T, C, R> operator=(mat<T, C, R> rhs) {
+    bool operator==(const mat<T, C, R>& rhs) const {
         for (unsigned i = 0; i < R; ++i) {
             for (unsigned j = 0; j < C; ++j) {
-                data[i][j] = rhs[i][j];
+                if (data[i][j] != rhs[i][j]) {
+                    return false;
+                }
             }
+        }
+        return true;
+    }
+
+    mat<T, C, R> operator=(const mat<T, C, R>& rhs) {
+        for (unsigned i = 0; i < R; ++i) {
+            data[i] = rhs[i];
         }
         return *this;
     }
@@ -46,6 +54,16 @@ protected:
 
 
 template <typename T, unsigned C, unsigned R>
+std::ostream& operator<<(std::ostream& os, const mat<T, C, R>& m) {
+    os << "[";
+    for (unsigned i = 0; i < R; ++i) {
+        os << m[i] << std::endl;
+    }
+    os << "]";
+    return os;
+}
+
+template <typename T, unsigned C, unsigned R>
 mat<T, C, R> operator+(const mat<T, C, R>& lhs, const mat<T, C, R>& rhs) {
     mat<T, C, R> result;
     for (unsigned i = 0; i < R; ++i) {
@@ -56,8 +74,8 @@ mat<T, C, R> operator+(const mat<T, C, R>& lhs, const mat<T, C, R>& rhs) {
     return result;
 }
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator+(const mat<T, C, R>& lhs, U rhs) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator+(const mat<T, C, R>& lhs, T rhs) {
     mat<T, C, R> result;
     for (unsigned i = 0; i < R; ++i) {
         for (unsigned j = 0; j < C; ++j) {
@@ -67,8 +85,8 @@ mat<T, C, R> operator+(const mat<T, C, R>& lhs, U rhs) {
     return result;
 }
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator+(U lhs, const mat<T, C, R>& rhs) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator+(T lhs, const mat<T, C, R>& rhs) {
     return rhs + lhs;
 }
 
@@ -95,8 +113,8 @@ mat<T, C, R> operator-(const mat<T, C, R>& lhs, const mat<T, C, R>& rhs) {
     return result;
 }
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator-(const mat<T, C, R>& lhs, U rhs) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator-(const mat<T, C, R>& lhs, T rhs) {
     mat<T, C, R> result;
     for (unsigned i = 0; i < R; ++i) {
         for (unsigned j = 0; j < C; ++j) {
@@ -106,14 +124,14 @@ mat<T, C, R> operator-(const mat<T, C, R>& lhs, U rhs) {
     return result;
 }
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator-(U lhs, const mat<T, C, R>& rhs) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator-(T lhs, const mat<T, C, R>& rhs) {
     return -rhs + lhs;
 }
 
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator*(const mat<T, C, R>& m, U s) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator*(const mat<T, C, R>& m, T s) {
     mat<T, C, R> result;
     for (unsigned i = 0; i < R; ++i) {
         for (unsigned j = 0; j < C; ++j) {
@@ -123,8 +141,8 @@ mat<T, C, R> operator*(const mat<T, C, R>& m, U s) {
     return result;
 }
 
-template <typename T, typename U, unsigned C, unsigned R>
-mat<T, C, R> operator*(U s, const mat<T, C, R>& m) {
+template <typename T, unsigned C, unsigned R>
+mat<T, C, R> operator*(T s, const mat<T, C, R>& m) {
     return m * s;
 }
 
@@ -133,28 +151,31 @@ vec<T, C> operator*(const mat<T, C, R>& m, const vec<T, R>& v) {
     vec<T, C> result;
     for (unsigned i = 0; i < C; ++i) {
         for (unsigned j = 0; j < R; ++j) {
-            result[i] += m[i][j] * v[j];
+            result[i] += (m[i][j] * v[j]);
         }
     }
     return result;
 }
 
 template <typename T, unsigned C, unsigned R>
-vec<T, R> operator*(const vec<T, C>& v, const mat<T, C, R>& m) {
-    vec<T, R> result;
+vec<T, C> operator*(const vec<T, R>& v, const mat<T, C, R>& m) {
+    vec<T, C> result;
     for (unsigned i = 0; i < R; ++i) {
         for (unsigned j = 0; j < C; ++j) {
-            result[i] += v[j] * m[j][i];
+            result[j] += v[i] * m[i][j];
         }
     }
+    std::cout << v << std::endl;
+    std::cout << m << std::endl;
+    std::cout << result << std::endl;
     return result;
 }
 
 template <typename T, unsigned C, unsigned R, unsigned Q>
-mat<T, C, R> operator*(const mat<T, C, R>& lhs, const mat<T, R, Q>& rhs) {
-    mat<T, C, Q> result;
-    for (unsigned i = 0; i < C; ++i) {
-        for (unsigned k = 0; k < R; ++k) {
+mat<T, R, Q> operator*(const mat<T, C, R>& lhs, const mat<T, Q, C>& rhs) {
+    mat<T, R, Q> result;
+    for (unsigned i = 0; i < R; ++i) {
+        for (unsigned k = 0; k < C; ++k) {
             for (unsigned j = 0; j < Q; ++j) {
                 result[i][j] += lhs[i][k] * rhs[k][j];
             }

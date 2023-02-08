@@ -60,7 +60,7 @@ protected:
         return sorted;
     }
     ecs<D>* ecs = nullptr;
-    bone* root = nullptr;
+    bone<D>* root = nullptr;
 };
 
 

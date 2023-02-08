@@ -1,10 +1,17 @@
 set_languages("c++17")
+add_requires("sfml 2.5.*")
 
-target("robot")
+target("test")
     set_kind("binary")
     add_includedirs(".")
-    add_files("robot.cpp")
+    add_files("test.cpp")
 
+target("viewer")
+    set_kind("binary")
+    add_includedirs(".")
+    add_files("viewer.cpp")
+    add_packages("sfml")
+    
 --
 -- If you want to known more usage about xmake, please see https://xmake.io
 --

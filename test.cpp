@@ -26,13 +26,25 @@ TEST_CASE("2. matrix") {
     ik::vec2 v1 = {1, 2};
     ik::mat3x2 m1 = {{1, 2, 3}, {4, 5, 6}};
     ik::mat2x3 m2 = {{1, 2}, {3, 4}, {5, 6}};
-    std::cout << "m1 = " << m1 << std::endl; 
-    ik::vec3 v2 = v1 * m1;
-    ik::mat2 m3 = (m1 * m2);
-
-    CHECK_EQ(v2, (ik::vec3{9, 12, 15}));
-    // CHECK_EQ(m1 * m2, (ik::mat2{{22, 28}, {49, 64}}));
-    
-
+    CHECK_EQ(v1 * m1, (ik::vec3{9, 12, 15}));
+    CHECK_EQ(m1 * m2, (ik::mat2{{22, 28}, {49, 64}}));
 }
 
+TEST_CASE("3. bone") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone();
+    auto* b2 = b1->createBone();
+    skeleton.topologicalSort();
+    CHECK_EQ(b1->id, 1);
+    CHECK_EQ(b2->id, 2);
+
+    ik::ecs2d ecs(3);
+    r->position(ecs) = {0, 0};
+    r->rotation(ecs) = {0, 1};
+    b1->position(ecs) = {1, 0};
+    b1->rotation(ecs) = {1, 0};
+    b2->position(ecs) = {1, 0};        
+    b2->rotation(ecs) = {1, 0};
+
+}

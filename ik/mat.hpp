@@ -165,9 +165,6 @@ vec<T, C> operator*(const vec<T, R>& v, const mat<T, C, R>& m) {
             result[j] += v[i] * m[i][j];
         }
     }
-    std::cout << v << std::endl;
-    std::cout << m << std::endl;
-    std::cout << result << std::endl;
     return result;
 }
 

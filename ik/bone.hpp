@@ -13,10 +13,16 @@ namespace ik
 template <unsigned D>
 class bone {
 public:
-    vec<float, D> position(ecs<D>* ecs) const { return ecs->position_[id]; }
-    vec<float, D> orientation(ecs<D>* ecs) const { return ecs->orientation_[id]; }
-    vec<float, D> scale(ecs<D>* ecs) const { return ecs->scale_[id]; }
-    vec<float, D-1> rotation(ecs<D>* ecs) const { return ecs->rotation_[id]; }
+    vec<float, D> position(const ecs<D>& ecs) const { return ecs.position_[id]; }
+    vec<float, D> orientation(const ecs<D>& ecs) const { return ecs.orientation_[id]; }
+    vec<float, D> scale(const ecs<D>& ecs) const { return ecs.scale_[id]; }
+    vec<float, D-1> rotation(const ecs<D>& ecs) const { return ecs.rotation_[id]; }
+
+    vec<float, D>& position(ecs<D>& ecs) { return ecs.position_[id]; }
+    vec<float, D>& orientation(ecs<D>& ecs) { return ecs.orientation_[id]; }
+    vec<float, D>& scale(ecs<D>& ecs) { return ecs.scale_[id]; }
+    vec<float, D-1>& rotation(ecs<D>& ecs) { return ecs.rotation_[id]; }
+
 
     bone* createBone() {
         bone* child = new bone();
@@ -25,7 +31,7 @@ public:
         return child;
     }
 
-protected:
+// protected:
     unsigned id;
     bone* parent = nullptr;
     std::vector<bone*> children;
@@ -40,27 +46,27 @@ public:
             delete bone;
         }
     }
+    bone<D>* root = nullptr;
 
-protected:
+// protected:
     // 拓扑排序，要注意将每个节点的孩子连续排放，并记录孩子的开始位置和数量，方便后面查找
     std::vector<bone<D>*> topologicalSort() {
         std::vector<bone<D>*> sorted;
         std::queue<bone<D>*> queue;
         unsigned id = 0;
-        queue.push_back(root);
-        while (!stack.empty()) {
-            bone<D>* current = stack.back();
-            stack.pop_back();
-            sorted.push_back(current);
-            current->id = id++;
-            for (auto child : current->children) {
-                stack.push_back(child);
+        queue.push(root);
+        while (!queue.empty()) {
+            auto b = queue.front();
+            queue.pop();
+            b->id = id++;
+            sorted.push_back(b);
+            for (auto child : b->children) {
+                queue.push(child);
             }
         }
         return sorted;
     }
     ecs<D>* ecs = nullptr;
-    bone<D>* root = nullptr;
 };
 
 

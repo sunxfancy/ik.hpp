@@ -16,4 +16,7 @@ struct ecs
     ecs(unsigned size) : position_(size), orientation_(size), scale_(size), rotation_(size) {}
 };
 
+typedef ecs<2> ecs2d;
+typedef ecs<3> ecs3d;
+
 } // namespace ik

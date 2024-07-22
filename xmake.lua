@@ -1,5 +1,6 @@
 set_languages("c++17")
 add_requires("sfml 2.5.*")
+add_rules("plugin.compile_commands.autoupdate")
 
 target("test")
     set_kind("binary")

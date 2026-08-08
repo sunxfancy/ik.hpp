@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <initializer_list>
 #include <type_traits>
 #include <ostream>
@@ -44,27 +45,29 @@ template <typename T, unsigned N>
 class vec : public vec_base<T, N>
 {
 public:
+    using vec_base<T, N>::data;
+
     vec() {
         for (unsigned i = 0; i < N; ++i) {
-            data[i] = 0;
+            this->data[i] = 0;
         }
     }
     vec(std::initializer_list<T> list) {
         unsigned i = 0;
         for(auto& val : list) {
-            data[i++] = val;
+            this->data[i++] = val;
         }
     }
     vec(const vec<T, N>& rhs) = default;
     vec(vec<T, N>&& rhs) = default;
     ~vec() = default;
 
-    T operator[](unsigned i) const { return data[i]; }
-    T& operator[](unsigned i) { return data[i]; }
+    T operator[](unsigned i) const { return this->data[i]; }
+    T& operator[](unsigned i) { return this->data[i]; }
 
     vec<T, N> operator=(vec<T, N> rhs) {
         for (unsigned i = 0; i < N; ++i) {
-            data[i] = rhs[i];
+            this->data[i] = rhs[i];
         }
         return *this;
     }
@@ -82,7 +85,7 @@ T sum(vec<T, N> v) {
 
 template <typename T, unsigned N>
 T dot(vec<T, N> lhs, vec<T, N> rhs) {
-    T result;
+    T result = T{};
     for(unsigned i = 0; i < N; ++i) {
         result += (lhs[i] * rhs[i]);
     }

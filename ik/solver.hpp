@@ -17,9 +17,9 @@ public:
     ecs<D>* getTrace(unsigned time) { return trace[time]; }
 
 protected:
-    bool keepTrace;
-    unsigned maxIterations;
-    float tolerance;
+    bool keepTrace = false;
+    unsigned maxIterations = 0;
+    float tolerance = 0.0f;
 
     std::vector<ecs<D>*> trace;
 };

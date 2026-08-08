@@ -66,7 +66,7 @@ public:
         }
         return sorted;
     }
-    ecs<D>* ecs = nullptr;
+    ecs<D>* state = nullptr;
 };
 
 

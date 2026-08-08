@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
-#include <type_traits>
 #include <ostream>
+#include <type_traits>
 
 namespace ik
 {
@@ -90,6 +91,58 @@ T dot(vec<T, N> lhs, vec<T, N> rhs) {
         result += (lhs[i] * rhs[i]);
     }
     return result;
+}
+
+template <typename T, unsigned N>
+T length_squared(vec<T, N> v) {
+    return dot(v, v);
+}
+
+template <typename T, unsigned N>
+T length(vec<T, N> v) {
+    return std::sqrt(length_squared(v));
+}
+
+template <typename T, unsigned N>
+T distance(vec<T, N> a, vec<T, N> b) {
+    return length(a - b);
+}
+
+template <typename T, unsigned N>
+vec<T, N> normalize(vec<T, N> v) {
+    T len = length(v);
+    if (len <= T{}) {
+        return v;
+    }
+    return v / len;
+}
+
+template <typename T>
+vec<T, 2> rotate(vec<T, 2> v, T angle) {
+    T c = std::cos(angle);
+    T s = std::sin(angle);
+    return vec<T, 2>{v[0] * c - v[1] * s, v[0] * s + v[1] * c};
+}
+
+template <typename T>
+T angle(vec<T, 2> v) {
+    return std::atan2(v[1], v[0]);
+}
+
+template <typename T>
+T wrap_angle(T a) {
+    const T pi = static_cast<T>(3.14159265358979323846);
+    const T two_pi = static_cast<T>(2) * pi;
+    while (a <= -pi) a += two_pi;
+    while (a > pi) a -= two_pi;
+    return a;
+}
+
+template <typename T>
+T clamp_angle(T value, T min_value, T max_value) {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
 }
 
 template <typename T, unsigned N>

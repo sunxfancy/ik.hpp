@@ -2,6 +2,7 @@
 
 #include "ik/vec.hpp"
 #include "ik/mat.hpp"
+#include "ik/joint.hpp"
 #include "ik/bone.hpp"
 #include "ik/ecs.hpp"
 #include "ik/solver.hpp"

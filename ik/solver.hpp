@@ -2,6 +2,7 @@
 
 #include "ik/bone.hpp"
 #include "ik/ecs.hpp"
+#include "ik/joint.hpp"
 #include "ik/vec.hpp"
 
 #include <algorithm>
@@ -15,36 +16,45 @@ namespace detail
 {
 
 template <unsigned D>
-inline void apply_angle_constraints(const std::vector<bone<D>*>&, ecs<D>&) {}
-
-template <>
-inline void apply_angle_constraints<2>(const std::vector<bone<2>*>& bones, ecs<2>& state) {
+inline void apply_angle_constraints(const std::vector<bone<D>*>& bones, ecs<D>& state) {
     for (auto* b : bones) {
         if (!b->parent || !b->constrained) continue;
 
-        vec2 parent_dir{1.0f, 0.0f};
+        const vec<float, D>* gp = nullptr;
+        vec<float, D> gp_pos;
         if (b->parent->parent) {
-            parent_dir = b->parent->position(state) - b->parent->parent->position(state);
-            if (length_squared(parent_dir) <= 1e-12f) {
-                parent_dir = vec2{1.0f, 0.0f};
+            gp_pos = b->parent->parent->position(state);
+            gp = &gp_pos;
+        }
+        vec<float, D> parent_fwd = parent_forward_of<D>(
+            b->parent->orientation(state), b->parent->position(state), gp);
+
+        vec<float, D> child_dir =
+            safe_normalize(b->position(state) - b->parent->position(state));
+        auto local = local_angles_from_direction<D>(parent_fwd, child_dir);
+        auto clamped = clamp_local_angles(local, b->min_rotation, b->max_rotation);
+
+        bool changed = false;
+        for (unsigned i = 0; i < D - 1; ++i) {
+            if (clamped[i] != local[i]) {
+                changed = true;
+                break;
             }
         }
-        float parent_angle = angle(parent_dir);
-        vec2 dir = b->position(state) - b->parent->position(state);
-        float world = angle(dir);
-        float local = wrap_angle(world - parent_angle);
-        float clamped = clamp_angle(local, b->min_rotation[0], b->max_rotation[0]);
-        if (clamped != local) {
-            float len = b->length > 0.0f ? b->length : length(dir);
-            b->position(state) =
-                b->parent->position(state) + rotate(vec2{len, 0.0f}, parent_angle + clamped);
-        }
+        if (!changed) continue;
+
+        vec<float, D> dir = direction_from_local_angles<D>(parent_fwd, clamped);
+        float len = b->length > 0.0f ? b->length : length(b->position(state) - b->parent->position(state));
+        b->orientation(state) = dir;
+        b->rotation(state) = clamped;
+        b->position(state) = b->parent->position(state) + dir * len;
     }
 }
 
 } // namespace detail
 
 // Iterative FABRIK solver with optional force blending, joint limits, and traces.
+// Works for both 2D and 3D (and any D with position-based FABRIK).
 template <unsigned D>
 class solver
 {
@@ -160,14 +170,13 @@ protected:
         vec<float, D> dir = point - anchor;
         float len = length(dir);
         if (len <= 1e-8f) {
-            dir = vec<float, D>{};
-            dir[0] = 1.0f;
+            dir = detail::default_forward<D>();
             len = 1.0f;
         }
         point = anchor + dir * (bone_length / len);
     }
 
-    void solve_chain(const std::vector<bone<D>*>& bones,
+    void solve_chain(const std::vector<bone<D>*>& /*bones*/,
                      ecs<D>& state,
                      bone<D>* end,
                      const target& t) {
@@ -194,7 +203,6 @@ protected:
         }
 
         if (distance(root_pos, desired) >= chain_length) {
-            // Target unreachable: stretch chain toward target.
             for (size_t i = 1; i < chain.size(); ++i) {
                 vec<float, D> dir = desired - chain[i - 1]->position(state);
                 float len = length(dir);

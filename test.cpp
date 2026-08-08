@@ -13,6 +13,10 @@ static bool near_vec(ik::vec2 a, ik::vec2 b, float eps = 1e-3f) {
     return near(a[0], b[0], eps) && near(a[1], b[1], eps);
 }
 
+static bool near_vec(ik::vec3 a, ik::vec3 b, float eps = 1e-3f) {
+    return near(a[0], b[0], eps) && near(a[1], b[1], eps) && near(a[2], b[2], eps);
+}
+
 TEST_CASE("1. vector arithmetic") {
     ik::vec3 v1 = {1, 2, 3};
     ik::vec3 v2 = {4, 5, 6};
@@ -299,9 +303,97 @@ TEST_CASE("18. 3d ik reaches target") {
     ik::solver3d s;
     s.setMaxIterations(32).setTolerance(1e-3f).addTarget(b2, target);
     CHECK(s.solve(skeleton, ecs));
-    CHECK(near(b2->position(ecs)[0], target[0], 1e-2f));
-    CHECK(near(b2->position(ecs)[1], target[1], 1e-2f));
-    CHECK(near(b2->position(ecs)[2], target[2], 1e-2f));
+    CHECK(near_vec(b2->position(ecs), target, 1e-2f));
     CHECK(near(distance(b1->position(ecs), r->position(ecs)), 1.0f, 1e-2f));
     CHECK(near(distance(b2->position(ecs), b1->position(ecs)), 1.0f, 1e-2f));
+}
+
+TEST_CASE("19. 3d forward kinematics yaw pitch") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    r->position(ecs) = {0, 0, 0};
+    r->rotation(ecs) = {0, 0};
+    b1->rotation(ecs) = {0, 0};                    // along +X
+    b2->rotation(ecs) = {0, 3.14159265f / 2.0f};   // pitch +90 deg -> +Z in parent frame
+
+    skeleton.forward_kinematics(ecs);
+
+    CHECK(near_vec(b1->position(ecs), {1, 0, 0}, 1e-3f));
+    CHECK(near_vec(b2->position(ecs), {1, 0, 1}, 1e-3f));
+    CHECK(near_vec(b1->orientation(ecs), {1, 0, 0}, 1e-3f));
+    CHECK(near_vec(b2->orientation(ecs), {0, 0, 1}, 1e-3f));
+}
+
+TEST_CASE("20. 3d joint yaw pitch constraints") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    // Almost straight: tiny yaw/pitch allowed
+    b2->setConstraints({-0.1f, -0.1f}, {0.1f, 0.1f});
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+
+    ik::solver3d s;
+    s.setMaxIterations(48).setTolerance(1e-3f);
+    s.addTarget(b2, {0.0f, 1.0f, 1.0f});
+    s.solve(skeleton, ecs);
+
+    auto local = b2->rotation(ecs);
+    CHECK(local[0] >= -0.15f);
+    CHECK(local[0] <= 0.15f);
+    CHECK(local[1] >= -0.15f);
+    CHECK(local[1] <= 0.15f);
+    CHECK(near(distance(b2->position(ecs), b1->position(ecs)), 1.0f, 1e-2f));
+}
+
+TEST_CASE("21. 3d unreachable and force step") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+
+    ik::solver3d hard;
+    hard.setMaxIterations(8).addTarget(b2, {10, 0, 0});
+    CHECK(!hard.solve(skeleton, ecs));
+    CHECK(near_vec(b2->position(ecs), {2, 0, 0}, 1e-2f));
+
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+    ik::vec3 start = b2->position(ecs);
+    ik::vec3 target{0.5f, 0.5f, 0.5f};
+    ik::solver3d soft;
+    soft.setForce(0.2f).addTarget(b2, target);
+    soft.step(skeleton, ecs, 1.0f);
+    CHECK(distance(b2->position(ecs), target) < distance(start, target));
+    CHECK(distance(b2->position(ecs), target) > 1e-3f);
+}
+
+TEST_CASE("22. 3d rotation extraction roundtrip") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(2);
+    r->position(ecs) = {0, 0, 0};
+    r->orientation(ecs) = {1, 0, 0};
+    b1->rotation(ecs) = {0.4f, -0.25f};
+    skeleton.forward_kinematics(ecs);
+
+    auto pos = b1->position(ecs);
+    skeleton.update_rotations(ecs);
+    CHECK(near(b1->rotation(ecs)[0], 0.4f, 1e-3f));
+    CHECK(near(b1->rotation(ecs)[1], -0.25f, 1e-3f));
+    CHECK(near_vec(b1->position(ecs), pos, 1e-4f));
 }

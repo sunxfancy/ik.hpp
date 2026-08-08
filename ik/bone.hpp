@@ -1,7 +1,9 @@
 #pragma once
 
-#include "ik/vec.hpp"
 #include "ik/ecs.hpp"
+#include "ik/joint.hpp"
+#include "ik/vec.hpp"
+
 #include <queue>
 #include <vector>
 
@@ -16,21 +18,20 @@ public:
     vec<float, D> position(const ecs<D>& ecs) const { return ecs.position_[id]; }
     vec<float, D> orientation(const ecs<D>& ecs) const { return ecs.orientation_[id]; }
     vec<float, D> scale(const ecs<D>& ecs) const { return ecs.scale_[id]; }
-    vec<float, D-1> rotation(const ecs<D>& ecs) const { return ecs.rotation_[id]; }
+    vec<float, D - 1> rotation(const ecs<D>& ecs) const { return ecs.rotation_[id]; }
 
     vec<float, D>& position(ecs<D>& ecs) { return ecs.position_[id]; }
     vec<float, D>& orientation(ecs<D>& ecs) { return ecs.orientation_[id]; }
     vec<float, D>& scale(ecs<D>& ecs) { return ecs.scale_[id]; }
-    vec<float, D-1>& rotation(ecs<D>& ecs) { return ecs.rotation_[id]; }
+    vec<float, D - 1>& rotation(ecs<D>& ecs) { return ecs.rotation_[id]; }
 
     bone* createBone(float bone_length = 1.0f) {
         bone* child = new bone();
         child->parent = this;
         child->length = bone_length;
-        const float pi = 3.14159265358979323846f;
         for (unsigned i = 0; i < D - 1; ++i) {
-            child->min_rotation[i] = -pi;
-            child->max_rotation[i] = pi;
+            child->min_rotation[i] = -detail::kPi;
+            child->max_rotation[i] = detail::kPi;
         }
         children.push_back(child);
         return child;
@@ -41,7 +42,9 @@ public:
         return *this;
     }
 
-    bone& setConstraints(vec<float, D-1> min_rot, vec<float, D-1> max_rot) {
+    // Local joint limits for the D-1 angular DOFs:
+    // 2D: [hinge], 3D: [yaw, pitch] in the parent bone frame.
+    bone& setConstraints(vec<float, D - 1> min_rot, vec<float, D - 1> max_rot) {
         min_rotation = min_rot;
         max_rotation = max_rot;
         constrained = true;
@@ -57,8 +60,8 @@ public:
     unsigned id = 0;
     float length = 0.0f;
     bool constrained = false;
-    vec<float, D-1> min_rotation;
-    vec<float, D-1> max_rotation;
+    vec<float, D - 1> min_rotation;
+    vec<float, D - 1> max_rotation;
     unsigned child_begin = 0;
     unsigned child_count = 0;
     bone* parent = nullptr;
@@ -70,10 +73,9 @@ class skeleton {
 public:
     skeleton() {
         root = new bone<D>();
-        const float pi = 3.14159265358979323846f;
         for (unsigned i = 0; i < D - 1; ++i) {
-            root->min_rotation[i] = -pi;
-            root->max_rotation[i] = pi;
+            root->min_rotation[i] = -detail::kPi;
+            root->max_rotation[i] = detail::kPi;
         }
     }
     ~skeleton() {
@@ -130,7 +132,7 @@ public:
         update_rotations(state);
     }
 
-    // Place the skeleton in a straight chain starting at root_position along +X (2D/3D).
+    // Place the skeleton in a straight chain starting at root_position along +X.
     void init_straight_pose(ecs<D>& state, vec<float, D> root_position = {}) {
         if (bones_.empty()) {
             topologicalSort();
@@ -141,6 +143,8 @@ public:
         for (auto* b : bones_) {
             if (!b->parent) {
                 b->position(state) = root_position;
+                b->orientation(state) = detail::default_forward<D>();
+                b->rotation(state) = {};
                 continue;
             }
             vec<float, D> offset{};
@@ -149,51 +153,75 @@ public:
                 b->length = offset[0];
             }
             b->position(state) = b->parent->position(state) + offset;
+            b->rotation(state) = {};
         }
         update_rotations(state);
     }
 
-    // Build world joint positions from local joint angles in rotation_ (2D).
-    // root.position is the fixed world root; each child uses its length and local angle.
+    // Build world joint positions from local joint angles in rotation_.
+    // rotation_ is always local (hinge in 2D; yaw/pitch in 3D).
+    // orientation_ is always the world-space bone direction.
     void forward_kinematics(ecs<D>& state) const {
         if (bones_.empty()) return;
+
         for (auto* b : bones_) {
             if (!b->parent) {
+                if (length_squared(b->orientation(state)) <= 1e-12f) {
+                    // Root orientation from its local angles relative to +X.
+                    b->orientation(state) = detail::direction_from_local_angles<D>(
+                        detail::default_forward<D>(), b->rotation(state));
+                } else {
+                    b->orientation(state) = detail::safe_normalize(b->orientation(state));
+                }
                 continue;
             }
-            if constexpr (D == 2) {
-                float parent_world = 0.0f;
-                if (b->parent->parent) {
-                    vec2 parent_dir =
-                        b->parent->position(state) - b->parent->parent->position(state);
-                    parent_world = angle(parent_dir);
-                } else {
-                    parent_world = b->parent->rotation(state)[0];
-                }
-                float local_angle = b->rotation(state)[0];
-                float world_angle = parent_world + local_angle;
-                float len = b->length > 0.0f ? b->length : 1.0f;
-                b->position(state) =
-                    b->parent->position(state) + rotate(vec2{len, 0.0f}, world_angle);
-            } else {
-                vec<float, D> dir{};
-                dir[0] = 1.0f;
-                b->position(state) = b->parent->position(state) + dir * b->length;
+
+            const vec<float, D>* gp = nullptr;
+            vec<float, D> gp_pos;
+            if (b->parent->parent) {
+                gp_pos = b->parent->parent->position(state);
+                gp = &gp_pos;
             }
+            vec<float, D> parent_fwd = detail::parent_forward_of<D>(
+                b->parent->orientation(state), b->parent->position(state), gp);
+
+            vec<float, D> world_dir =
+                detail::direction_from_local_angles<D>(parent_fwd, b->rotation(state));
+            float len = b->length > 0.0f ? b->length : 1.0f;
+            b->orientation(state) = world_dir;
+            b->position(state) = b->parent->position(state) + world_dir * len;
         }
-        update_rotations(state);
     }
 
-    // Derive joint rotations from world positions (2D: absolute world angle of bone segment).
+    // Derive local rotations and world orientations from joint positions.
     void update_rotations(ecs<D>& state) const {
-        if constexpr (D == 2) {
-            for (auto* b : bones_) {
-                if (!b->parent) {
-                    continue;
+        if (bones_.empty()) return;
+
+        for (auto* b : bones_) {
+            if (!b->parent) {
+                if (length_squared(b->orientation(state)) <= 1e-12f) {
+                    b->orientation(state) = detail::default_forward<D>();
+                } else {
+                    b->orientation(state) = detail::safe_normalize(b->orientation(state));
                 }
-                vec2 dir = b->position(state) - b->parent->position(state);
-                b->rotation(state)[0] = angle(dir);
+                continue;
             }
+
+            vec<float, D> child_dir =
+                detail::safe_normalize(b->position(state) - b->parent->position(state));
+            b->orientation(state) = child_dir;
+
+            const vec<float, D>* gp = nullptr;
+            vec<float, D> gp_pos;
+            if (b->parent->parent) {
+                gp_pos = b->parent->parent->position(state);
+                gp = &gp_pos;
+            }
+            vec<float, D> parent_fwd = detail::parent_forward_of<D>(
+                b->parent->orientation(state), b->parent->position(state), gp);
+
+            b->rotation(state) =
+                detail::local_angles_from_direction<D>(parent_fwd, child_dir);
         }
     }
 
@@ -212,13 +240,10 @@ private:
     std::vector<bone<D>*> bones_;
 };
 
-
-
 typedef bone<2> bone2d;
 typedef bone<3> bone3d;
 
 typedef skeleton<2> skeleton2d;
 typedef skeleton<3> skeleton3d;
-
 
 } // namespace ik

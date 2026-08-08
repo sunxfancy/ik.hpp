@@ -7,8 +7,8 @@ on:
     branches: [master]
 
 jobs:
-  build-and-test:
-    name: Build and unit tests (${{ matrix.os }})
+  xmake:
+    name: xmake (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -33,3 +33,24 @@ jobs:
 
       - name: Run unit tests
         run: xmake run test
+
+  cmake:
+    name: cmake (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIK_BUILD_TESTS=ON -DIK_BUILD_VIEWER=OFF
+
+      - name: Build unit tests
+        run: cmake --build build --config Release --parallel
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure -C Release

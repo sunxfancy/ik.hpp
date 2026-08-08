@@ -2,8 +2,16 @@
 .xmake/
 build/
 
+# CMake
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
 # MacOS Cache
 .DS_Store
 
 .vscode/
-compile_commands.json

@@ -22,12 +22,10 @@ if(IK_BUILD_TESTS)
     add_executable(ik_test test.cpp)
     target_link_libraries(ik_test PRIVATE ik::ik)
     target_compile_options(ik_test PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra>
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall>
         $<$<CXX_COMPILER_ID:MSVC>:/W4>
     )
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(ik_test PRIVATE pthread)
-    elseif(APPLE)
+    if(UNIX)
         target_link_libraries(ik_test PRIVATE pthread)
     endif()
 

@@ -5,6 +5,14 @@
 
 using namespace zeroerr;
 
+static bool near(float a, float b, float eps = 1e-3f) {
+    return std::abs(a - b) <= eps;
+}
+
+static bool near_vec(ik::vec2 a, ik::vec2 b, float eps = 1e-3f) {
+    return near(a[0], b[0], eps) && near(a[1], b[1], eps);
+}
+
 TEST_CASE("1. vector arithmetic") {
     ik::vec3 v1 = {1, 2, 3};
     ik::vec3 v2 = {4, 5, 6};
@@ -90,6 +98,10 @@ TEST_CASE("7. bone topology") {
     CHECK_EQ(b1->parent, r);
     CHECK_EQ(b2->parent, b1);
     CHECK_EQ(r->children.size(), 2u);
+    CHECK_EQ(r->child_count, 2u);
+    CHECK_EQ(r->child_begin, 1u);
+    CHECK_EQ(b1->child_count, 1u);
+    CHECK_EQ(b1->child_begin, 3u);
 }
 
 TEST_CASE("8. ecs state access") {
@@ -117,6 +129,179 @@ TEST_CASE("8. ecs state access") {
 
 TEST_CASE("9. solver configuration") {
     ik::solver<2> s;
-    auto& chained = s.setKeepTrace(true).setMaxIterations(32).setTolerance(1e-4f);
+    auto& chained = s.setKeepTrace(true).setMaxIterations(32).setTolerance(1e-4f).setForce(0.5f);
     CHECK_EQ(&chained, &s);
+}
+
+TEST_CASE("10. vector length helpers") {
+    ik::vec2 v = {3, 4};
+    CHECK_LT(std::abs(length(v) - 5.0f), 1e-5f);
+    CHECK_LT(std::abs(length_squared(v) - 25.0f), 1e-5f);
+    CHECK(near_vec(normalize(v), ik::vec2{0.6f, 0.8f}));
+    CHECK(near_vec(rotate(ik::vec2{1, 0}, 3.14159265f / 2.0f), ik::vec2{0, 1}, 1e-4f));
+}
+
+TEST_CASE("11. bind and straight pose") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    CHECK(near_vec(r->position(ecs), {0, 0}));
+    CHECK(near_vec(b1->position(ecs), {1, 0}));
+    CHECK(near_vec(b2->position(ecs), {2, 0}));
+    CHECK_LT(std::abs(b1->length - 1.0f), 1e-5f);
+    CHECK_LT(std::abs(b2->length - 1.0f), 1e-5f);
+}
+
+TEST_CASE("12. forward kinematics from local angles") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    r->position(ecs) = {0, 0};
+    r->rotation(ecs) = {0};
+    b1->rotation(ecs) = {0};                 // local
+    b2->rotation(ecs) = {3.14159265f / 2.0f}; // local +90 deg
+
+    skeleton.forward_kinematics(ecs);
+
+    CHECK(near_vec(b1->position(ecs), {1, 0}, 1e-3f));
+    CHECK(near_vec(b2->position(ecs), {1, 1}, 1e-3f));
+}
+
+TEST_CASE("13. ik reaches reachable target") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::vec2 target{1.0f, 1.0f};
+    ik::solver2d s;
+    s.setMaxIterations(32).setTolerance(1e-3f);
+    s.addTarget(b2, target);
+    CHECK(s.solve(skeleton, ecs));
+    CHECK(near_vec(b2->position(ecs), target, 1e-2f));
+
+    // Bone lengths preserved.
+    CHECK(near(distance(b1->position(ecs), r->position(ecs)), 1.0f, 1e-2f));
+    CHECK(near(distance(b2->position(ecs), b1->position(ecs)), 1.0f, 1e-2f));
+    CHECK(near_vec(r->position(ecs), {0, 0}, 1e-3f));
+}
+
+TEST_CASE("14. ik unreachable target stretches toward it") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::vec2 target{10.0f, 0.0f};
+    ik::solver2d s;
+    s.setMaxIterations(8).setTolerance(1e-3f);
+    s.addTarget(b2, target);
+    CHECK(!s.solve(skeleton, ecs));
+    CHECK(near_vec(b2->position(ecs), {2, 0}, 1e-2f));
+}
+
+TEST_CASE("15. joint constraints") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    const float pi = 3.14159265f;
+    b2->setConstraints({-0.1f}, {0.1f}); // nearly straight relative to parent
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::solver2d s;
+    s.setMaxIterations(32).setTolerance(1e-3f);
+    s.addTarget(b2, {1.0f, 1.0f});
+    s.solve(skeleton, ecs);
+
+    ik::vec2 parent_dir = b1->position(ecs) - r->position(ecs);
+    ik::vec2 dir = b2->position(ecs) - b1->position(ecs);
+    float local = ik::wrap_angle(ik::angle(dir) - ik::angle(parent_dir));
+    CHECK(local >= -0.15f);
+    CHECK(local <= 0.15f);
+    (void)pi;
+}
+
+TEST_CASE("16. force-based step moves gradually") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+    ik::vec2 start = b2->position(ecs);
+    ik::vec2 target{1.0f, 1.0f};
+
+    ik::solver2d s;
+    s.setForce(0.25f).addTarget(b2, target);
+    s.step(skeleton, ecs, 1.0f);
+
+    float d0 = distance(start, target);
+    float d1 = distance(b2->position(ecs), target);
+    CHECK(d1 < d0);
+    CHECK(d1 > 1e-3f);
+}
+
+TEST_CASE("17. solver trace recording") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::solver2d s;
+    s.setKeepTrace(true).setMaxIterations(3).addTarget(b2, {1.0f, 1.0f});
+    s.solve(skeleton, ecs);
+
+    CHECK(s.traceSize() >= 1u);
+    auto* first = s.getTrace(0);
+    CHECK(first);
+    CHECK_EQ(first->size(), 3u);
+}
+
+TEST_CASE("18. 3d ik reaches target") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+
+    ik::vec3 target{0.5f, 0.5f, 0.5f};
+    ik::solver3d s;
+    s.setMaxIterations(32).setTolerance(1e-3f).addTarget(b2, target);
+    CHECK(s.solve(skeleton, ecs));
+    CHECK(near(b2->position(ecs)[0], target[0], 1e-2f));
+    CHECK(near(b2->position(ecs)[1], target[1], 1e-2f));
+    CHECK(near(b2->position(ecs)[2], target[2], 1e-2f));
+    CHECK(near(distance(b1->position(ecs), r->position(ecs)), 1.0f, 1e-2f));
+    CHECK(near(distance(b2->position(ecs), b1->position(ecs)), 1.0f, 1e-2f));
 }

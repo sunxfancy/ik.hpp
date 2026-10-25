@@ -397,3 +397,105 @@ TEST_CASE("22. 3d rotation extraction roundtrip") {
     CHECK(near(b1->rotation(ecs)[1], -0.25f, 1e-3f));
     CHECK(near_vec(b1->position(ecs), pos, 1e-4f));
 }
+
+TEST_CASE("23. solveChain pins chain root and ignores side branch") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    auto* b3 = r->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(4);
+    skeleton.init_straight_pose(ecs, {10, 20});
+
+    ik::solver2d s;
+    s.setMaxIterations(32).setTolerance(1e-3f);
+    s.addTarget(b2, {11.0f, 21.0f});
+    CHECK(s.solveChain(skeleton, ecs, b1->id, b2->id));
+
+    CHECK(near_vec(r->position(ecs), {10, 20}));
+    CHECK(near_vec(b1->position(ecs), {11, 20}));
+    CHECK(near_vec(b3->position(ecs), {11, 20}));
+    CHECK(near_vec(b2->position(ecs), {11, 21}, 1e-2f));
+}
+
+TEST_CASE("24. influence blends solved pose") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::solver2d s;
+    s.setMaxIterations(32).setInfluence(0.5f).addTarget(b2, {0.0f, 2.0f});
+    s.solve(skeleton, ecs);
+    CHECK(near_vec(b2->position(ecs), {1.0f, 1.0f}, 1e-2f));
+
+    skeleton.init_straight_pose(ecs, {0, 0});
+    s.setInfluence(0.0f);
+    s.solve(skeleton, ecs);
+    CHECK(near_vec(b2->position(ecs), {2.0f, 0.0f}));
+}
+
+TEST_CASE("25. 3d pole bends the mid joint") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+
+    ik::solver3d s;
+    s.setMaxIterations(64).setTolerance(1e-4f).addTarget(b2, {1.5f, 0.5f, 0.0f});
+    s.setPole({1.0f, 1.0f, 0.0f}, 1.0f);
+    CHECK(s.hasPole());
+    CHECK(s.solveChain(skeleton, ecs, 0, b2->id));
+    CHECK(b1->position(ecs)[1] > 0.1f);
+
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+    s.setPole({1.0f, -1.0f, 0.0f}, 1.0f);
+    CHECK(s.solveChain(skeleton, ecs, 0, b2->id));
+    CHECK(b1->position(ecs)[1] < -0.1f);
+}
+
+TEST_CASE("26. tip rotation override") {
+    ik::skeleton3d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs3d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0, 0});
+
+    const float pi = 3.14159265f;
+    ik::solver3d s;
+    s.setMaxIterations(48).addTarget(b2, {2.0f, 0.0f, 0.0f});
+    s.setTipRotation(b2->id, {0.0f, pi / 2.0f}, 1.0f);
+    CHECK(s.solveChain(skeleton, ecs, 0, b2->id));
+    CHECK(near_vec(b2->position(ecs), {2.0f, 0.0f, 0.0f}, 2e-2f));
+    CHECK(near(b2->orientation(ecs)[2], 1.0f, 1e-2f));
+    CHECK(near(b2->rotation(ecs)[1], pi / 2.0f, 1e-2f));
+}
+
+TEST_CASE("27. stepChain soft convergence") {
+    ik::skeleton2d skeleton;
+    auto* r = skeleton.root;
+    auto* b1 = r->createBone(1.0f);
+    auto* b2 = b1->createBone(1.0f);
+    skeleton.topologicalSort();
+
+    ik::ecs2d ecs(3);
+    skeleton.init_straight_pose(ecs, {0, 0});
+
+    ik::solver2d s;
+    s.addTarget(b2, {0.0f, 2.0f});
+    s.stepChain(skeleton, ecs, 0, b2->id, 1.0f);
+    CHECK(near_vec(b2->position(ecs), {0.0f, 2.0f}, 1e-2f));
+}

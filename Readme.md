@@ -6,9 +6,12 @@ ik.hpp
 
 ## Features
 
-1. Compute Inverse Kinematics for each bone 
-2. joint constraints 
-3. Force-based movement simulation
+1. FABRIK Inverse Kinematics for 2D/3D bone chains
+2. Joint angle constraints
+3. Force-based soft IK (`step`) and influence blending
+4. Chain-scoped solve (`solveChain` / `stepChain`) that pins an arbitrary chain root
+5. 3D pole vector (magnet / hint) for bend direction
+6. Tip orientation override after solving
 
 
 ## Compare
